@@ -1,36 +1,112 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Glynac VDR
 
-## Getting Started
+A Virtual Data Room (VDR) frontend application built as part of the
+Springer Capital Frontend Development Internship.
 
-First, run the development server:
+## Project Overview
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Glynac VDR is a secure and responsive document management interface
+designed for organizing, searching, previewing, and managing confidential
+financial documents.
+
+The project focuses on building a polished frontend experience using:
+
+- Next.js
+- TypeScript
+- Tailwind CSS
+
+## Planned Features
+
+### 1. Folder & File Explorer
+- Dynamic folder hierarchy
+- Grid/file viewer
+- Folder navigation
+- Breadcrumbs
+- Search and filtering
+- Sorting by name, date, file type, and sensitivity
+- Mock file upload
+- Folder creation and renaming
+
+### 2. Document Previewer
+- Split-screen document preview
+- Text and Markdown preview
+- PDF and image mock preview
+- JSON viewer
+- Compliance text highlighting
+
+### 3. Permission & Access Control
+- Security tags:
+  - Confidential
+  - Public
+  - Internal Only
+  - Restricted
+- Permission editor
+- View, Edit, and Share permissions
+- Role-based access for:
+  - Admin
+  - Compliance Officer
+  - Advisor
+  - Auditor
+
+### 4. Activity Audit Log
+- Activity timeline
+- Uploaded
+- Viewed
+- Downloaded
+- Flagged
+- Permission Changed
+- Timestamps and user information
+
+### 5. Responsive UI
+- Responsive layout
+- Light and dark mode
+- Clean typography
+- Hover effects
+- Smooth transitions
+- Subtle micro-animations
+
+## Project Structure
+
+```text
+glynac-vdr/
+├── app/
+├── components/
+│   └── vdr/
+├── data/
+├── types/
+├── public/
+├── package.json
+└── README.md
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Scope
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+This project focuses on the frontend implementation using mock data
+and local application state.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Real cloud storage, such as S3 or serverless document storage, is
+outside the current scope.
 
-## Learn More
+## Current Status
 
-To learn more about Next.js, take a look at the following resources:
+🚧 Project setup completed.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Next steps:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Build the VDR dashboard
+Implement file explorer
+Add document previewer
+Add permission management
+Add audit activity drawer
+Improve responsive UI and animations
+Prepare project demonstration
+Internship Task
 
-## Deploy on Vercel
+## Task 1 – Virtual Data Room (VDR)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Part of the Frontend Engineering Platform task roadmap provided for
+the Springer Capital internship.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Author
+
+Harshal Patil
