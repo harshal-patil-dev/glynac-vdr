@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, Download, Sparkles } from 'lucide-react';
 import { GlynacGVLogo } from '@/components/vdr/GlynacGVLogo';
 
@@ -22,6 +22,16 @@ const SVG_CODE = `<svg width="1000" height="1000" viewBox="0 0 1000 1000" fill="
 
 export function BrandAssetsModal({ isOpen, onClose }: BrandAssetsModalProps) {
   const [copied, setCopied] = useState(false);
+
+  // Keyboard shortcut: close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -64,6 +74,9 @@ export function BrandAssetsModal({ isOpen, onClose }: BrandAssetsModalProps) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="brand-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
     >
       <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">

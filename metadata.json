@@ -1,6 +1,6 @@
 {
   "name": "Glynac VDR - Enterprise Virtual Data Room",
-  "description": "High-fidelity visual design concept and workspace reference for Glynac VDR, an enterprise virtual data room.",
+  "description": "Enterprise virtual data room for organizing, searching, sorting, and previewing due diligence documents with IndexedDB persistence.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

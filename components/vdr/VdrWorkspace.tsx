@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Search,
   Lock,
@@ -16,11 +16,10 @@ import {
   ShieldCheck,
   X,
   Sparkles,
-  FolderOpen,
-  Filter,
   Check,
-  ShieldAlert,
-  Key
+  Key,
+  Database,
+  RotateCcw
 } from 'lucide-react';
 import { GlynacGVLogo } from '@/components/vdr/GlynacGVLogo';
 import { FolderCard } from '@/components/vdr/FolderCard';
@@ -33,14 +32,17 @@ import { NewFolderModal } from '@/components/vdr/NewFolderModal';
 import { UploadFileModal } from '@/components/vdr/UploadFileModal';
 import { INITIAL_FOLDERS, MOCK_DOCUMENTS } from '@/data/mockVdrData';
 import { SortField, SortOrder, VdrDocument, VdrFolder, FileType, SecurityTag } from '@/types/vdr';
+import { initVdrStorage, persistFolder, persistDocument, resetVdrStorage } from '@/lib/vdrStorage';
 
 export function VdrWorkspace() {
   // Navigation & View Mode
   const [activeNav, setActiveNav] = useState<'documents' | 'security'>('documents');
 
-  // Repository Data State (Supports dynamic additions via modals)
+  // Repository Data State (Backed by IndexedDB)
   const [folders, setFolders] = useState<VdrFolder[]>(INITIAL_FOLDERS);
   const [documents, setDocuments] = useState<VdrDocument[]>(MOCK_DOCUMENTS);
+  const [isLoadingStorage, setIsLoadingStorage] = useState(true);
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
 
   // Folder & Search State
   const [selectedFolderCode, setSelectedFolderCode] = useState<string | null>('01');
@@ -62,6 +64,55 @@ export function VdrWorkspace() {
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [currentWorkspace, setCurrentWorkspace] = useState('Project Falcon');
+
+  // Refs for click-outside dismissal
+  const workspaceMenuRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // 1. Initialize IndexedDB storage safely on mount
+  useEffect(() => {
+    let isMounted = true;
+    initVdrStorage()
+      .then((data) => {
+        if (isMounted) {
+          setFolders(data.folders);
+          setDocuments(data.documents);
+          setIsLoadingStorage(false);
+        }
+      })
+      .catch((error) => {
+        console.error('IndexedDB load error:', error);
+        if (isMounted) {
+          setIsLoadingStorage(false);
+          setStorageNotice('Loaded in memory fallback mode.');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Click-outside handler for popover menus
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        workspaceMenuRef.current &&
+        !workspaceMenuRef.current.contains(e.target as Node)
+      ) {
+        setIsWorkspaceMenuOpen(false);
+      }
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(e.target as Node)
+      ) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   // Currently selected folder object
   const currentFolder = useMemo(() => {
@@ -155,33 +206,46 @@ export function VdrWorkspace() {
 
   // Document selection handler
   const handleSelectDocument = (doc: VdrDocument) => {
-    if (selectedDocumentForPreview?.id === doc.id) {
-      // Already selected; keep it open or toggle
-      setSelectedDocumentForPreview(doc);
-    } else {
-      setSelectedDocumentForPreview(doc);
+    setSelectedDocumentForPreview(doc);
+  };
+
+  // Handlers for modal actions with IndexedDB persistence
+  const handleCreateFolder = async (newFolder: VdrFolder) => {
+    setFolders((prev) => [...prev, newFolder]);
+    setSelectedFolderCode(newFolder.code);
+    try {
+      await persistFolder(newFolder);
+    } catch (err) {
+      console.error('Failed to persist folder:', err);
+      setStorageNotice('Folder created in session; storage write failed.');
     }
   };
 
-  // Handlers for modal actions
-  const handleCreateFolder = (newFolder: VdrFolder) => {
-    setFolders((prev) => [...prev, newFolder]);
-    setSelectedFolderCode(newFolder.code);
-  };
-
-  const handleUploadDocument = (newDoc: VdrDocument) => {
+  const handleUploadDocument = async (newDoc: VdrDocument) => {
     setDocuments((prev) => [newDoc, ...prev]);
-    // Update folder file count
-    setFolders((prev) =>
-      prev.map((f) => {
-        if (f.code === newDoc.folderCode) {
-          const currentCount = parseInt(f.count, 10) || 0;
-          return { ...f, count: `${currentCount + 1} files` };
-        }
-        return f;
-      })
-    );
     setSelectedDocumentForPreview(newDoc);
+
+    try {
+      const updatedFolder = await persistDocument(newDoc);
+      if (updatedFolder) {
+        setFolders((prev) =>
+          prev.map((f) => (f.code === updatedFolder.code ? updatedFolder : f))
+        );
+      } else {
+        setFolders((prev) =>
+          prev.map((f) => {
+            if (f.code === newDoc.folderCode) {
+              const currentCount = parseInt(f.count, 10) || 0;
+              return { ...f, count: `${currentCount + 1} files` };
+            }
+            return f;
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Failed to persist document:', err);
+      setStorageNotice('Document uploaded in session; storage write failed.');
+    }
   };
 
   const handleResetFilters = () => {
@@ -191,6 +255,20 @@ export function VdrWorkspace() {
     setSelectedSecurityFilter('all');
   };
 
+  const handleResetData = async () => {
+    if (window.confirm('Reset data room back to default demonstration records?')) {
+      setIsLoadingStorage(true);
+      const res = await resetVdrStorage();
+      setFolders(res.folders);
+      setDocuments(res.documents);
+      setSelectedFolderCode('01');
+      setSelectedDocumentForPreview(null);
+      setIsLoadingStorage(false);
+      setStorageNotice('Data room reset to demo state.');
+      setTimeout(() => setStorageNotice(null), 3000);
+    }
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#F8F9FA] text-[#0F172A] font-sans antialiased">
       {/* ========================================================= */}
@@ -198,10 +276,14 @@ export function VdrWorkspace() {
       {/* ========================================================= */}
       <aside className="w-64 shrink-0 bg-[#FFFFFF] border-r border-[#E2E8F0] flex flex-col justify-between p-5 select-none z-10">
         <div>
-          {/* Logo & Brand Header (Clickable -> Brand Assets Modal) */}
+          {/* Logo & Brand Header: Clicking navigates to All Documents (Home) */}
           <div
-            onClick={() => setIsBrandModalOpen(true)}
-            title="Click to view Glynac VDR Brand Assets & SVG code"
+            onClick={() => {
+              setActiveNav('documents');
+              setSelectedFolderCode(null);
+              setSelectedDocumentForPreview(null);
+            }}
+            title="Glynac VDR - Return to all binders"
             className="flex items-center justify-between pb-6 border-b border-[#F1F5F9] cursor-pointer group hover:opacity-90 transition-opacity"
           >
             <div className="flex items-center gap-3">
@@ -215,13 +297,13 @@ export function VdrWorkspace() {
                 </div>
               </div>
             </div>
-            <span className="p-1 rounded text-slate-300 group-hover:text-amber-500 group-hover:bg-amber-50 transition-colors">
+            <span className="p-1 rounded text-slate-300">
               <Sparkles className="w-3.5 h-3.5" />
             </span>
           </div>
 
           {/* Active Workspace Switcher */}
-          <div className="mt-5 mb-6 relative">
+          <div className="mt-5 mb-6 relative" ref={workspaceMenuRef}>
             <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
               ACTIVE WORKSPACE
             </label>
@@ -237,7 +319,11 @@ export function VdrWorkspace() {
                   M&A Due Diligence
                 </div>
               </div>
-              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isWorkspaceMenuOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${
+                  isWorkspaceMenuOpen ? 'rotate-180' : ''
+                }`}
+              />
             </button>
 
             {/* Workspace Dropdown Menu */}
@@ -264,7 +350,9 @@ export function VdrWorkspace() {
                       <div className="font-medium">{ws.name}</div>
                       <div className="text-[10px] text-slate-400">{ws.status}</div>
                     </div>
-                    {currentWorkspace === ws.name && <Check className="w-3.5 h-3.5 text-[#011238]" />}
+                    {currentWorkspace === ws.name && (
+                      <Check className="w-3.5 h-3.5 text-[#011238]" />
+                    )}
                   </button>
                 ))}
               </div>
@@ -301,11 +389,13 @@ export function VdrWorkspace() {
             </button>
 
             {/* Folder shortcuts in sidebar */}
-            <div className="pt-2 pb-1 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-              BINDERS ({folders.length})
+            <div className="pt-2 pb-1 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+              <span>BINDERS ({folders.length})</span>
             </div>
+
             {folders.map((f) => {
               const isSelected = activeNav === 'documents' && selectedFolderCode === f.code;
+              const binderDocCount = documents.filter((d) => d.folderCode === f.code).length;
               return (
                 <button
                   key={f.id}
@@ -325,13 +415,14 @@ export function VdrWorkspace() {
                     <span className="truncate">{f.name}</span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                    {documents.filter((d) => d.folderCode === f.code).length}
+                    {binderDocCount}
                   </span>
                 </button>
               );
             })}
 
             <div className="pt-2"></div>
+
             <button
               onClick={() => setActiveNav('security')}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors cursor-pointer ${
@@ -346,13 +437,20 @@ export function VdrWorkspace() {
           </div>
         </div>
 
-        {/* Quiet Footer Badge */}
+        {/* Quiet Footer Controls */}
         <div className="pt-4 border-t border-[#F1F5F9] flex items-center justify-between text-[11px] text-slate-400">
           <div className="flex items-center gap-1.5 text-slate-600">
-            <Lock className="w-3.5 h-3.5 text-slate-400" />
-            <span>256-Bit Vault</span>
+            <Database className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="text-[11px] font-medium text-slate-700">IndexedDB Vault</span>
           </div>
-          <span className="font-mono text-[10px]">v1.0</span>
+          <button
+            onClick={handleResetData}
+            title="Reset sample data"
+            className="text-[10px] text-slate-400 hover:text-rose-600 flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            <RotateCcw className="w-2.5 h-2.5" />
+            <span>Reset Demo</span>
+          </button>
         </div>
       </aside>
 
@@ -384,7 +482,7 @@ export function VdrWorkspace() {
           </div>
 
           {/* Right Header: Profile Popover */}
-          <div className="relative">
+          <div className="relative" ref={profileMenuRef}>
             <button
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
               className="flex items-center gap-3 p-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer text-left"
@@ -398,7 +496,7 @@ export function VdrWorkspace() {
               </div>
             </button>
 
-            {/* Profile Menu Popover */}
+            {/* Profile Menu Popover (Corrected: No misplaced brand modal action) */}
             {isProfileMenuOpen && (
               <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-[#E2E8F0] rounded-xl shadow-xl p-4 z-30 space-y-3">
                 <div className="border-b border-slate-100 pb-2">
@@ -418,18 +516,20 @@ export function VdrWorkspace() {
                     <span className="text-slate-400">Session Protocol:</span>
                     <span className="font-mono text-slate-800">TLS 1.3 / E2EE</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Storage State:</span>
+                    <span className="font-mono text-emerald-700">IndexedDB Active</span>
+                  </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
-                  <button
-                    onClick={() => setIsBrandModalOpen(true)}
-                    className="text-[11px] text-blue-700 font-semibold hover:underline cursor-pointer"
-                  >
-                    Brand Assets & Logo
-                  </button>
+                <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-[11px]">
+                  <span className="text-emerald-700 font-medium flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Counsel Verified</span>
+                  </span>
                   <button
                     onClick={() => setIsProfileMenuOpen(false)}
-                    className="text-[11px] text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="text-slate-400 hover:text-slate-700 cursor-pointer"
                   >
                     Close
                   </button>
@@ -438,6 +538,19 @@ export function VdrWorkspace() {
             )}
           </div>
         </header>
+
+        {/* Transient Storage Notification Banner */}
+        {storageNotice && (
+          <div className="px-8 py-2 bg-blue-50 border-b border-blue-200 text-blue-900 text-[12px] flex items-center justify-between">
+            <span>{storageNotice}</span>
+            <button
+              onClick={() => setStorageNotice(null)}
+              className="text-blue-700 hover:text-blue-900 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Content Body: Split View when Preview is Open */}
         <div className="flex-1 flex min-h-0 overflow-hidden">
@@ -492,6 +605,7 @@ export function VdrWorkspace() {
                       <Plus className="w-4 h-4 text-slate-400" />
                       <span>New Folder</span>
                     </button>
+
                     <button
                       onClick={() => setIsUploadModalOpen(true)}
                       className="px-4 py-2 text-[13px] font-semibold text-white bg-[#011238] hover:bg-[#07246b] rounded-lg transition-colors shadow-xs flex items-center gap-2 cursor-pointer"
@@ -576,7 +690,10 @@ export function VdrWorkspace() {
                         <option value="Verified">Verified</option>
                       </select>
 
-                      {(searchQuery || selectedFileType !== 'all' || selectedSecurityFilter !== 'all' || selectedFolderCode) && (
+                      {(searchQuery ||
+                        selectedFileType !== 'all' ||
+                        selectedSecurityFilter !== 'all' ||
+                        selectedFolderCode) && (
                         <button
                           onClick={handleResetFilters}
                           className="text-[11px] text-rose-600 hover:text-rose-800 font-medium px-2 py-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
@@ -694,6 +811,7 @@ export function VdrWorkspace() {
                 </div>
               </div>
 
+              {/* Legitimate Brand Assets Trigger in Security & Access */}
               <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between text-[12px] text-blue-900">
                 <div className="flex items-center gap-2">
                   <Key className="w-4 h-4 text-[#011238]" />

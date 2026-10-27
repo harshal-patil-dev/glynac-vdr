@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, FolderPlus } from 'lucide-react';
 import { VdrFolder } from '@/types/vdr';
 
@@ -27,6 +27,23 @@ export function NewFolderModal({
   const [folderCode, setFolderCode] = useState(nextCode);
   const [description, setDescription] = useState('');
 
+  // Sync nextCode when opened
+  useEffect(() => {
+    if (isOpen) {
+      setFolderCode(String(existingFoldersCount + 1).padStart(2, '0'));
+    }
+  }, [isOpen, existingFoldersCount]);
+
+  // Escape key listener
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -34,11 +51,11 @@ export function NewFolderModal({
     if (!folderName.trim()) return;
 
     const newFolder: VdrFolder = {
-      id: `folder-${Date.now()}`,
+      id: `folder-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       code: folderCode.trim() || nextCode,
       name: folderName.trim(),
       count: '0 files',
-      size: '0 MB',
+      size: '0 B',
       description: description.trim() || 'Custom binder workspace',
     };
 
@@ -53,6 +70,9 @@ export function NewFolderModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-folder-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
     >
       <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
